@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-
+import { supabase } from "./supabase";
 const CAMPOS = [
   "Equipo",
   "Tipo",
@@ -57,20 +57,50 @@ export default function App() {
   const [cargando, setCargando] = useState(false);
 
   useEffect(() => {
-    const datos = obtenerDatosLocales();
-    setEquipos(datos);
-  }, []);
+  cargarEquipos();
+}, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "equipos-industriales",
-        JSON.stringify(equipos)
-      );
-    } catch (error) {
-      console.error("Error guardando datos:", error);
-    }
-  }, [equipos]);
+const cargarEquipos = async () => {
+  const { data, error } = await supabase
+    .from("equipos")
+    .select("*");
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+    console.log("DATOS SUPABASE:", data);
+    console.log(data);
+  const datosConvertidos = (data || []).map((item) => ({
+  id: item.id,
+  "Equipo": item.equipo || "",
+  "Tipo": item.tipo || "",
+  "Area": item.area || "",
+  "Criticidad": item.criticidad || "",
+  "Rpm motor": item.rpm_motor || "",
+  "kW": item.kw || "",
+  "Hp": item.hp || "",
+  "Ø Polea 1": item.polea_1 || "",
+  "Ø Polea 2": item.polea_2 || "",
+  "Tipo correa": item.tipo_correa || "",
+  "Longitud correa": item.longitud_correa || "",
+  "Cantidad correa": item.cantidad_correa || "",
+  "Tipo de chumacera 1": item.chumacera_1 || "",
+  "Tipo de chumacera 2": item.chumacera_2 || "",
+  "# chumacera 1": item.numero_chumacera_1 || "",
+  "# chumacera 2": item.numero_chumacera_2 || "",
+  "kW reductor": item.kw_reductor || "",
+  "(i) reductor": item.i_reductor || "",
+  "Cadena redler": item.cadena_redler || "",
+  "Tamaño Sprocket 1": item.sprocket_1 || "",
+  "Tamaño Sprocket 2": item.sprocket_2 || "",
+  "Cantidad de dientes 1": item.dientes_1 || "",
+  "Cantidad de dientes 2": item.dientes_2 || ""
+}));
+
+setEquipos(datosConvertidos);
+};
+
 
   const manejarCambio = (campo, valor) => {
     setFormulario((anterior) => {
@@ -86,44 +116,78 @@ export default function App() {
     setModoEdicion(null);
   };
 
-  const guardarEquipo = () => {
-    if (!formulario.Equipo.trim()) {
-      alert("Debe ingresar el nombre del equipo");
-      return;
-    }
+  const guardarEquipo = async () => {
+  if (!formulario.Equipo.trim()) {
+    alert("Debe ingresar el nombre del equipo");
+    return;
+  }
 
-    setCargando(true);
+  setCargando(true);
 
-    setTimeout(() => {
-      if (modoEdicion !== null) {
-        const nuevosEquipos = equipos.map((equipo, indice) => {
-          if (indice === modoEdicion) {
-            return {
-              ...formulario,
-              id: equipo.id
-            };
-          }
-
-          return equipo;
-        });
-
-        setEquipos(nuevosEquipos);
-      } else {
-        const nuevoEquipo = {
-          ...formulario,
-          id: Date.now()
-        };
-
-        setEquipos((anterior) => {
-          return [nuevoEquipo].concat(anterior);
-        });
-      }
-
-      limpiarFormulario();
-      setCargando(false);
-    }, 300);
+  const datosEquipo = {
+    equipo: formulario["Equipo"],
+    tipo: formulario["Tipo"],
+    area: formulario["Area"],
+    criticidad: formulario["Criticidad"],
+    rpm_motor: formulario["Rpm motor"],
+    kw: formulario["kW"],
+    hp: formulario["Hp"],
+    polea_1: formulario["Ø Polea 1"],
+    polea_2: formulario["Ø Polea 2"],
+    tipo_correa: formulario["Tipo correa"],
+    longitud_correa: formulario["Longitud correa"],
+    cantidad_correa: formulario["Cantidad correa"],
+    chumacera_1: formulario["Tipo de chumacera 1"],
+    chumacera_2: formulario["Tipo de chumacera 2"],
+    numero_chumacera_1: formulario["# chumacera 1"],
+    numero_chumacera_2: formulario["# chumacera 2"],
+    kw_reductor: formulario["kW reductor"],
+    i_reductor: formulario["(i) reductor"],
+    cadena_redler: formulario["Cadena redler"],
+    sprocket_1: formulario["Tamaño Sprocket 1"],
+    sprocket_2: formulario["Tamaño Sprocket 2"],
+    dientes_1: formulario["Cantidad de dientes 1"],
+    dientes_2: formulario["Cantidad de dientes 2"]
   };
 
+  let error = null;
+
+  if (modoEdicion !== null) {
+    const equipoActual = equipos[modoEdicion];
+
+    const resultado = await supabase
+      .from("equipos")
+      .update(datosEquipo)
+      .eq("id", equipoActual.id);
+
+    error = resultado.error;
+  } else {
+    const resultado = await supabase
+      .from("equipos")
+      .insert([datosEquipo]);
+
+    error = resultado.error;
+  }
+
+  if (error) {
+    console.error(error);
+    alert("Error guardando datos");
+    setCargando(false);
+    return;
+  }
+
+  await cargarEquipos();
+
+  limpiarFormulario();
+
+  setCargando(false);
+
+  alert(
+    modoEdicion !== null
+      ? "Equipo actualizado correctamente"
+      : "Equipo guardado correctamente"
+  );
+};
   const editarEquipo = (indice) => {
     const equipo = equipos[indice];
 
@@ -140,21 +204,32 @@ export default function App() {
     });
   };
 
-  const eliminarEquipo = (indice) => {
-    const confirmar = window.confirm(
-      "¿Deseas eliminar este registro?"
-    );
+  const eliminarEquipo = async (indice) => {
+  const confirmar = window.confirm(
+    "¿Deseas eliminar este registro?"
+  );
 
-    if (!confirmar) {
-      return;
-    }
+  if (!confirmar) {
+    return;
+  }
 
-    const nuevosEquipos = equipos.filter((_, index) => {
-      return index !== indice;
-    });
+  const equipo = equipos[indice];
 
-    setEquipos(nuevosEquipos);
-  };
+  const { error } = await supabase
+    .from("equipos")
+    .delete()
+    .eq("id", equipo.id);
+
+  if (error) {
+    console.error(error);
+    alert("Error eliminando registro");
+    return;
+  }
+
+  alert("Registro eliminado correctamente");
+
+  await cargarEquipos();
+};
 
   const equiposFiltrados = useMemo(() => {
     return equipos.filter((equipo) => {
